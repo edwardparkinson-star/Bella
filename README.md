@@ -9,7 +9,7 @@ import subprocess
 try:
     import google.generativeai as genai
     # PASTE YOUR KEY HERE
-    API_KEY = "AIzaSyC1ScYdkej1gRTyEFLzBbfbunvbw0mlu4Q" 
+    API_KEY = "API_KEY" 
     genai.configure(api_key=API_KEY)
     model = genai.GenerativeModel('gemini-1.5-flash')
     HAS_BRAIN = True
@@ -49,7 +49,7 @@ class BellaAI:
                 break
 
             # 3. Process with "Internet Brain"
-            if HAS_BRAIN and API_KEY != "AIza...":
+            if HAS_BRAIN and API_KEY != "API_KEY":
                 try:
                     response = model.generate_content(user_speech)
                     self.speak(response.text)
