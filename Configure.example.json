@@ -1,0 +1,7 @@
+{
+  "brain": "auto",
+  "model": "gemini-2.5-flash",
+  "telegram_admins": [],
+  "user_title": "sir",
+  "wake_word": "bella"
+}
