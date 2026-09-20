@@ -1,4 +1,4 @@
-# 🎤 Bella - Personal AI Voice Assistant
+# 🎤 Bella - Personal AI All In One Voice Assistant
 
 > **Building the future of voice-activated AI.** Bella is an open-source personal AI assistant designed for voice interaction, multi-language support, and intelligent learning capabilities. Inspired by JARVIS, Bella brings conversational AI to your fingertips.
 
