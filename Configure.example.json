@@ -1,7 +1,7 @@
 {
   "brain": "auto",
   "model": "gemini-2.5-flash",
-  "telegram_admins": [],
+  "telegram_admins": [AQ.Ab8RN6JT4aTHk1fiK8UPweSXhsbvEE-zuibFY4T54ax-XqxLwg],
   "user_title": "sir",
   "wake_word": "bella"
 }
