@@ -35,7 +35,7 @@ git clone https://github.com/edwardparkinson-star/Bella.git
 cd Bella
 
 # Install dependencies
-pip install google-generativeai
+pip install google-genai
 
 # (Android Only) Install Termux API
 pkg install termux-api
@@ -210,7 +210,7 @@ pkg install termux-api
 ### Issue: API key not working
 1. Verify API key at [AI Studio](https://aistudio.google.com/)
 2. Check you've replaced `YOUR_FREE_API_KEY_HERE` in the code
-3. Ensure `google-generativeai` is installed: `pip install --upgrade google-generativeai`
+3. Ensure `google-genai` is installed: `pip install --upgrade google-genai`
 
 ### Issue: Voice not working
 - Ensure Termux has microphone permissions
