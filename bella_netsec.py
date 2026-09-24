@@ -16,12 +16,15 @@ import http.client
 import ipaddress
 import json
 import math
+import os
 import re
 import shutil
 import socket
 import ssl
 import struct
 import subprocess
+import threading
+import time
 import urllib.parse
 import urllib.request
 from datetime import datetime
@@ -395,6 +398,114 @@ def pw_strength(pw):
             "I won't repeat it back.", None)
 
 
+# ---------------------------------------------------------------- tarpit
+# Defensive tarpit. Runs ONLY on our own device. Opens a listener on a
+# commonly-probed port; when anything connects, we hold the connection
+# open feeding it almost nothing (a null byte a minute — just enough to
+# keep their tool hanging). The intruder's scanner stalls, their time
+# burns, they move on. We never send a single packet at anyone else:
+# everything happens on our own socket, and every visitor gets logged.
+# "Make the hacker tired of playing with it" — the defensive way.
+
+TARPIT_LOG = os.path.expanduser("~/.bella_tarpit.log")
+TARPIT_HOLD_SECS = 600  # hold each connection up to 10 minutes
+
+_tarpit = {"running": False, "port": 2222, "trapped": 0,
+           "thread": None, "error": None}
+
+
+def _tarpit_log(msg):
+    try:
+        with open(TARPIT_LOG, "a") as f:
+            f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} {msg}\n")
+    except OSError:
+        pass
+
+
+def _tarpit_hold(conn, addr):
+    ip = addr[0]
+    _tarpit_log(f"trapped {ip}")
+    end = time.time() + TARPIT_HOLD_SECS
+    try:
+        while time.time() < end and _tarpit["running"]:
+            time.sleep(60)
+            try:
+                conn.sendall(b"\x00")
+            except OSError:
+                break
+    except Exception:
+        pass
+    finally:
+        try:
+            conn.close()
+        except OSError:
+            pass
+
+
+def _tarpit_serve(port):
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        srv.bind(("0.0.0.0", port))
+    except OSError as e:
+        _tarpit["error"] = str(e)
+        _tarpit["running"] = False
+        return
+    srv.listen(10)
+    srv.settimeout(1.0)
+    while _tarpit["running"]:
+        try:
+            conn, addr = srv.accept()
+        except socket.timeout:
+            continue
+        except OSError:
+            break
+        _tarpit["trapped"] += 1
+        threading.Thread(target=_tarpit_hold, args=(conn, addr),
+                         daemon=True).start()
+    try:
+        srv.close()
+    except OSError:
+        pass
+
+
+def tarpit_start(port=2222):
+    """Lay the trap: hold shady connections open in silence, log them."""
+    if _tarpit["running"]:
+        return (f"The trap is already set on port {_tarpit['port']}, sir — "
+                f"{_tarpit['trapped']} caught so far."), None
+    _tarpit.update(running=True, port=port, trapped=0, error=None)
+    t = threading.Thread(target=_tarpit_serve, args=(port,), daemon=True)
+    _tarpit["thread"] = t
+    t.start()
+    time.sleep(0.5)
+    if _tarpit.get("error"):
+        _tarpit["running"] = False
+        return f"Couldn't open port {port}, sir: {_tarpit['error']}.", None
+    _tarpit_log(f"trap set on port {port}")
+    return (f"Trap set on port {port}, sir. Anything that connects gets held "
+            "in silence — their tools hang while I log every visitor."), None
+
+
+def tarpit_stop():
+    """Close the trap and release everything it was holding."""
+    if not _tarpit["running"]:
+        return "The trap isn't set, sir.", None
+    _tarpit["running"] = False
+    n = _tarpit["trapped"]
+    _tarpit_log(f"trap closed, {n} connections were held")
+    return (f"Trap closed, sir. It held {n} connection"
+            f"{'s' if n != 1 else ''} while it was live."), None
+
+
+def tarpit_status():
+    """Report whether the trap is live and how many it has caught."""
+    if not _tarpit["running"]:
+        return "The trap isn't set right now, sir.", None
+    return (f"Trap is live on port {_tarpit['port']}, sir — "
+            f"{_tarpit['trapped']} connections held so far."), None
+
+
 # ---------------------------------------------------------------- dispatcher
 
 NETSEC_HELP = (
@@ -404,6 +515,9 @@ NETSEC_HELP = (
     "audit a website ('check site example.com'), look up DNS/SPF/DMARC "
     "('dns example.com'), do subnet math ('subnet 192.168.1.0/24'), hash text "
     "('hash ...'), identify a hash, and rate password strength. "
+    "I can also lay a defensive trap on our own device ('set the trap') — "
+    "it holds shady connections open in silence and logs every visitor, "
+    "so intruders waste their time and move on. "
     "I only probe networks and devices you own or have permission to test."
 )
 
@@ -432,4 +546,12 @@ NETSEC_PATTERNS = [
      lambda m: identify_hash(m.group(1))),
     (re.compile(r"^password strength (.+)$", re.I | re.S),
      lambda m: pw_strength(m.group(1))),
+    (re.compile(r"^(?:set|lay|start)(?: the)? trap$", re.I),
+     lambda m: tarpit_start()),
+    (re.compile(r"^(?:set|lay|start)(?: the)? trap (?:on port )?(\d+)$", re.I),
+     lambda m: tarpit_start(int(m.group(1)))),
+    (re.compile(r"^(?:close|stop)(?: the)? trap$", re.I),
+     lambda m: tarpit_stop()),
+    (re.compile(r"^trap status$", re.I),
+     lambda m: tarpit_status()),
 ]
