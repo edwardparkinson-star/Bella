@@ -1,4 +1,0 @@
-# Personal settings and bytecode — keep out of the repo.
-config.json
-__pycache__/
-*.pyc
