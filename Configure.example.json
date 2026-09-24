@@ -1,9 +1,0 @@
-{
-  "brain": "auto",
-  "model": "gemini-2.5-flash",
-  "telegram_admins": [API_key_HERE],
-  "user_title": "sir",
-  "wake_word": "bella"
-}
-
-export GROQ_API_KEY="API_KEY"
