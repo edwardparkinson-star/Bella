@@ -4,8 +4,9 @@ Bella - Personal AI Voice Assistant.
 "I'm basically building my own Jarvis."
 
 Runs on Android via Termux. Voice in through Termux API speech recognition,
-voice out through Termux TTS. Three brains, tried in order:
-  1. Google Gemini (free AI Studio key) — primary
+voice out through Termux TTS. Four brains, tried in order:
+  0. Local (llama.cpp server on the phone itself) — private, offline, first pick
+  1. Google Gemini (free AI Studio key) — primary cloud
   2. Groq (free tier key) — automatic backup
   3. Keyless (free public API, no key or signup needed) — always available
 
@@ -260,9 +261,14 @@ class Bella:
     def _init_brain(self):
         pref = (self.cfg.get("brain") or "auto").lower()
         # NOTE: GitHub Models was permanently retired 2026-07-30 — no key can
-        # power it anymore. Priority: Gemini (free AI Studio key) -> Groq
-        # (free tier key) -> keyless (free public API, no key needed).
-        if pref == "groq":
+        # power it anymore. Priority: local (on-device server) -> Gemini
+        # (free AI Studio key) -> Groq (free tier key) -> keyless (free
+        # public API, no key needed).
+        if pref == "local":
+            self.brain = "local" if self._local_alive() else "keyless"
+            if self.brain == "keyless":
+                print("[Bella] brain=local but no local server on :8080; using keyless.")
+        elif pref == "groq":
             self.brain = "groq" if self.groq_key else "keyless"
             if not self.groq_key:
                 print("[Bella] brain=groq but no GROQ_API_KEY; using keyless.")
@@ -286,7 +292,9 @@ class Bella:
                     self.brain = "keyless"
         self.online = self.brain != "offline"
         note = ""
-        if self.brain == "gemini" and self.groq_key:
+        if self.brain == "local":
+            note = " (on-device brain)"
+        elif self.brain == "gemini" and self.groq_key:
             note = " (Groq backup armed)"
         elif self.brain == "keyless":
             note = " (no-key public brain)"
@@ -439,12 +447,68 @@ class Bella:
             self._log_assistant(reply)
         return reply
 
+    # -- local brain: llama.cpp server on the phone itself -------------------
+    # Fully offline, fully private — nothing leaves the device. Weaker than
+    # the cloud brains at hard reasoning, so they stay as fallbacks.
+    # Start it with:  llama-server -hf Qwen/Qwen3-1.7B-GGUF:Q4_K_M -c 4096 -t 8
+
+    LOCAL_DEFAULT_URL = "http://127.0.0.1:8080/v1"
+
+    def _local_url(self):
+        return os.environ.get("LOCAL_URL", self.LOCAL_DEFAULT_URL).rstrip("/")
+
+    def _local_alive(self):
+        """Fast probe: is the local server up? Never blocks the chain."""
+        try:
+            req = urllib.request.Request(
+                self._local_url() + "/models",
+                headers={"User-Agent": "Bella/1.0"})
+            with urllib.request.urlopen(req, timeout=2) as r:
+                return r.status == 200
+        except Exception:
+            return False
+
+    def _ask_local(self):
+        """One local-model call (OpenAI-compatible). Reply, or None."""
+        model = (os.environ.get("LOCAL_MODEL")
+                 or self.cfg.get("local_model") or "bella-local")
+        body = json.dumps({
+            "model": model,
+            "messages": self._oai_messages(),
+            "temperature": 0.7,
+            "max_tokens": 300,   # short, speakable answers
+        }).encode()
+        req = urllib.request.Request(
+            self._local_url() + "/chat/completions", data=body, method="POST",
+            headers={"Content-Type": "application/json",
+                     "User-Agent": "Bella/1.0"})
+        try:
+            # Local inference is slow (~10 tok/s on a phone) — generous timeout.
+            with urllib.request.urlopen(req, timeout=120) as r:
+                data = json.load(r)
+            reply = (data["choices"][0]["message"]["content"] or "").strip()
+            return self._clean(reply) if reply else None
+        except Exception as e:
+            self._last_cloud_error = f"local: {e}"
+            print(f"[Bella] Local brain failed ({e}).")
+            return None
+
+    def think_local(self, text, user_logged=False):
+        if not user_logged:
+            self._log_user(text)
+        reply = self._ask_local()
+        if reply:
+            self._log_assistant(reply)
+        return reply
+
     # -- brain chain: try each configured brain in priority order -------------
 
-    BRAIN_PRIORITY = ("gemini", "groq", "keyless")
+    BRAIN_PRIORITY = ("local", "gemini", "groq", "keyless")
 
     def _available_brains(self):
         brains = []
+        if self._local_alive():
+            brains.append("local")  # on-device server running — first pick
         if self.client is not None:
             brains.append("gemini")
         if self.groq_key:
@@ -453,6 +517,8 @@ class Bella:
         return brains
 
     def _ask_brain(self, name):
+        if name == "local":
+            return self._ask_local()
         if name == "gemini":
             return self._ask_gemini()
         if name == "groq":
@@ -504,7 +570,7 @@ class Bella:
                     "Set my brain to auto if you want me to reach the cloud — "
                     "or ask me for the time, a translation, or a joke.")
         # Cloud brain chain: try the last-working brain first, then the rest
-        # in priority order (gemini -> groq -> keyless). Keyless needs no key.
+        # in priority order (local -> gemini -> groq -> keyless).
         brains = self._available_brains()
         ordered = [self.brain] if self.brain in brains else []
         ordered += [b for b in self.BRAIN_PRIORITY
