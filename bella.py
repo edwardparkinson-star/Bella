@@ -592,6 +592,22 @@ class Bella:
 
     def run(self):
         mode = self.brain.upper()
+        if not HAS_STT:
+            # Text mode (no microphone): the wake-word gate only makes
+            # sense for ambient voice. When typing, talk directly.
+            print(f"--- Bella ({mode}). "
+                  "Type directly; no wake word needed. ---\n")
+            while True:
+                cmd = listen().strip()
+                if not cmd:
+                    continue
+                low = cmd.lower()
+                if low in ("exit", "quit", "shutdown", "power off",
+                           "goodbye bella", f"goodbye {self.wake_word}"):
+                    speak(f"Shutting down. Goodbye, {self.title}.")
+                    return
+                speak(self.think(cmd))
+            return
         print(f"--- Bella standby ({mode}). Say '{self.wake_word}' ---\n")
         while True:
             heard = listen().lower()
