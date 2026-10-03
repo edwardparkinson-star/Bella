@@ -1,0 +1,6 @@
+edge-tts
+sounddevice
+numpy
+openwakeword
+requests
+faster-whisper
