@@ -1,0 +1,1 @@
+{"customizations":{"vscode":{"extensions":["ms-python.python"]}},"forwardPorts":[8000],"image":"mcr.microsoft.com/devcontainers/python:3.12","name":"JARVIS Batcomputer","portsAttributes":{"8000":{"label":"JARVIS API","onAutoForward":"notify"}},"postCreateCommand":"pip install -r batcomputer/requirements-server.txt"}
